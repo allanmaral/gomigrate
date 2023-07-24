@@ -1,0 +1,6 @@
+username: sa
+password: uma senha super forte aqui
+database: database
+host: 127.0.0.1
+dialect: postgres
+migrations-path: migrations
