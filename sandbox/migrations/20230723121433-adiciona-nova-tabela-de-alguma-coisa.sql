@@ -1,6 +1,5 @@
 
--- Up
-BEGIN
+BEGIN -- UP
 
 --  Add altering commands here.
 -- 
@@ -12,15 +11,13 @@ BEGIN
 --    created_at TIMESTAMPTZ 
 --  );
 
-END
+END -- UP
 
-
--- Down
-BEGIN
+BEGIN -- DOWN
 
 -- Add reverting commands here.
 --
 -- Example:
 -- DROP TABLE users;
 
-END
+END -- DOWN

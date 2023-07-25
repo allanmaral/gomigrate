@@ -1,19 +1,18 @@
--- Up
-BEGIN
+
+BEGIN -- UP
 
 CREATE TABLE users (
-  user_id INT,
-  last_name VARCHAR(255),
-  first_name VARCHAR(255),
-  created_at TIMESTAMPTZ 
+  id          INT           NOT NULL  IDENTITY  PRIMARY KEY,
+  last_name   VARCHAR(255)  NOT NULL,
+  first_name  VARCHAR(255),
+  created_at  TIMESTAMP
 );
 
-END
+END -- UP
 
 
--- Down
-BEGIN
+BEGIN -- DOWN
 
 DROP TABLE users;
 
-END
+END -- DOWN

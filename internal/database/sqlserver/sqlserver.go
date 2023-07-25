@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	nurl "net/url"
 
 	"github.com/allanmaral/gomigrate/internal/database"
 	mssql "github.com/microsoft/go-mssqldb"
@@ -95,8 +96,39 @@ func WithInstance(instance *sql.DB, config *Config) (database.Driver, error) {
 	return ss, nil
 }
 
-func (ss *SQLServer) Open(provider string) (database.Driver, error) {
-	url := ""
+func (ss *SQLServer) Url(conf *database.ConnectionParams) *nurl.URL {
+	user := conf.User
+	password := conf.Password
+	hostname := conf.Hostname
+	port := conf.Port
+	database := conf.Database
+
+	if user == "" {
+		user = "sa"
+	}
+	if port == 0 {
+		port = 1433
+	}
+	if database == "" {
+		database = "master"
+	}
+
+	query := nurl.Values{}
+	query.Add("database", database)
+
+	return &nurl.URL{
+		Scheme:   "sqlserver",
+		User:     nurl.UserPassword(user, password),
+		Host:     fmt.Sprintf("%s:%d", hostname, port),
+		RawQuery: query.Encode(),
+	}
+}
+
+func (ss *SQLServer) Open(url string) (database.Driver, error) {
+	purl, err := nurl.Parse(url)
+	if err != nil {
+		return nil, err
+	}
 
 	db, err := sql.Open("sqlserver", url)
 	if err != nil {
@@ -104,7 +136,7 @@ func (ss *SQLServer) Open(provider string) (database.Driver, error) {
 	}
 
 	driver, err := WithInstance(db, &Config{
-		DatabaseName:    "database",
+		DatabaseName:    purl.Path,
 		MigrationsTable: "schema_migrations",
 	})
 
@@ -139,8 +171,41 @@ func (ss *SQLServer) Run(migration string) error {
 	return nil
 }
 
+func (ss *SQLServer) AppliedMigrations() ([]string, error) {
+	rows, err := ss.conn.QueryContext(context.Background(), `SELECT name FROM "`+ss.config.MigrationsTable+`";`)
+	if err != nil {
+		return nil, err
+	}
+
+	migrations := []string{}
+	for rows.Next() {
+		var migrationName string
+		rows.Scan(&migrationName)
+		migrations = append(migrations, migrationName)
+	}
+
+	return migrations, nil
+}
+
+func (ss *SQLServer) MarkAsApplied(migration string) error {
+	_, err := ss.conn.ExecContext(
+		context.Background(),
+		`INSERT INTO "`+ss.config.MigrationsTable+`" (name) VALUES (@p1);`,
+		migration)
+	if err != nil {
+		return fmt.Errorf("failed to mark migration as applied")
+	}
+
+	return nil
+}
+
 func (ss *SQLServer) ensureMigrationsTable() error {
-	query := `CREATE TABLE IF NOT EXISTS ` + ss.config.MigrationsTable + ` (
+	query := `IF NOT EXISTS
+	(SELECT * 
+		FROM sys.tables t 
+			JOIN sys.schemas s ON (t.schema_id = s.schema_id) 
+		WHERE s.name = 'dbo' AND t.name = '` + ss.config.MigrationsTable + `') 	
+	CREATE TABLE ` + ss.config.MigrationsTable + ` (
 		name VARCHAR(255) NOT NULL
 			PRIMARY KEY,
 		CONSTRAINT name 

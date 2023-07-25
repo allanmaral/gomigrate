@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"net/url"
 	"sync"
 )
 
@@ -9,14 +10,22 @@ var driversMu sync.RWMutex
 var drivers = make(map[string]Driver)
 
 type Driver interface {
-	Open(provider string) (Driver, error)
+	Url(conf *ConnectionParams) *url.URL
+
+	Open(url string) (Driver, error)
 
 	Close() error
 
 	Run(migration string) error
+
+	AppliedMigrations() ([]string, error)
+
+	MarkAsApplied(migration string) error
 }
 
-func Open(provider string) (Driver, error) {
+func Url(conf *ConnectionParams) (*url.URL, error) {
+	provider := conf.Provider
+
 	driversMu.RLock()
 	d, ok := drivers[provider]
 	driversMu.RUnlock()
@@ -24,7 +33,25 @@ func Open(provider string) (Driver, error) {
 		return nil, fmt.Errorf("database driver: unknown driver %v", provider)
 	}
 
-	return d.Open(provider)
+	return d.Url(conf), nil
+}
+
+func Open(rawUrl string) (Driver, error) {
+	purl, err := url.Parse(rawUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	provider := purl.Scheme
+
+	driversMu.RLock()
+	d, ok := drivers[provider]
+	driversMu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("database driver: unknown driver %v", provider)
+	}
+
+	return d.Open(rawUrl)
 }
 
 func Register(name string, driver Driver) {

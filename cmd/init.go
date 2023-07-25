@@ -4,42 +4,62 @@ import (
 	"fmt"
 
 	"github.com/allanmaral/gomigrate/internal/config"
+	"github.com/allanmaral/gomigrate/internal/database"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
-var force bool
-var initCmd = &cobra.Command{
-	Use:   "init",
-	Short: "Initializes project",
-	Long:  "Initializes project",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("init called")
+var (
+	username       string
+	password       string
+	databaseName   string
+	hostname       string
+	port           int32
+	provider       string
+	migrationsPath string
+	force          bool
 
-		conf := GetConfig()
-		if err := config.Init(conf, force); err != nil {
-			return err
-		}
+	initCmd = &cobra.Command{
+		Use:   "init",
+		Short: "Initializes project",
+		Long:  "Initializes project",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			params := &database.ConnectionParams{
+				User:     username,
+				Password: password,
+				Database: databaseName,
+				Hostname: hostname,
+				Port:     port,
+				Provider: provider,
+			}
 
-		return nil
-	},
-}
+			url, err := database.Url(params)
+			if err != nil {
+				return fmt.Errorf("failed to make connection url")
+			}
+
+			conf := config.Config{
+				Url:            url.String(),
+				MigrationsPath: migrationsPath,
+			}
+
+			if err := config.Init(&conf, force); err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+)
 
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	initCmd.Flags().StringP("username", "u", "", "Database username")
-	initCmd.Flags().StringP("password", "p", "", "Database password")
-	initCmd.Flags().StringP("database", "d", "", "Database name")
-	initCmd.Flags().String("host", "", "Database connection url")
-	initCmd.Flags().String("dialect", "", "Database dialect")
-	initCmd.Flags().String("migrations-path", "", "Path to the migrations folder")
+	initCmd.Flags().StringVarP(&username, "username", "u", "", "Database username")
+	initCmd.Flags().StringVarP(&password, "password", "p", "password", "Database password")
+	initCmd.Flags().StringVarP(&databaseName, "database", "d", "", "Database name")
+	initCmd.Flags().StringVar(&hostname, "host", "localhost", "Database connection hostname")
+	initCmd.Flags().Int32Var(&port, "port", 0, "Database connection port")
+	initCmd.Flags().StringVar(&provider, "provider", "sqlserver", "Database provider")
+	initCmd.Flags().StringVar(&migrationsPath, "migrations-path", "migrations", "Path to the migrations folder")
 	initCmd.Flags().BoolVarP(&force, "force", "f", false, "Will drop the existing config file and re-create it")
-
-	viper.BindPFlag("username", initCmd.Flags().Lookup("username"))
-	viper.BindPFlag("password", initCmd.Flags().Lookup("password"))
-	viper.BindPFlag("database", initCmd.Flags().Lookup("database"))
-	viper.BindPFlag("host", initCmd.Flags().Lookup("host"))
-	viper.BindPFlag("dialect", initCmd.Flags().Lookup("dialect"))
-	viper.BindPFlag("migrations-path", initCmd.Flags().Lookup("migrations-path"))
 }

@@ -3,10 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
 
 	"github.com/allanmaral/gomigrate/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	_ "github.com/allanmaral/gomigrate/internal/database/sqlserver"
 )
 
 var (
@@ -25,13 +29,12 @@ func Execute() {
 }
 
 func GetConfig() *config.Config {
+	configDir := filepath.Dir(viper.ConfigFileUsed())
+	migrationsPath := path.Join(configDir, viper.GetString("migrations-path"))
+
 	config := &config.Config{
-		Username:       viper.GetString("username"),
-		Password:       viper.GetString("password"),
-		Database:       viper.GetString("database"),
-		Host:           viper.GetString("host"),
-		Dialect:        viper.GetString("dialect"),
-		MigrationsPath: viper.GetString("migrations-path"),
+		Url:            viper.GetString("url"),
+		MigrationsPath: migrationsPath,
 	}
 
 	return config
@@ -55,12 +58,8 @@ func initConfig() {
 		viper.SetConfigName(".gomigrate")
 	}
 
-	viper.SetDefault("username", "root")
-	viper.SetDefault("password", "")
-	viper.SetDefault("database", "database")
-	viper.SetDefault("host", "127.0.0.1")
-	viper.SetDefault("dialect", "postgres")
-	viper.SetDefault("migrations_path", "migrations")
+	viper.SetDefault("url", "postgres://postgres:password@localhost:5432/example?sslmode=disable")
+	viper.SetDefault("migrations-path", "migrations")
 
 	viper.AutomaticEnv()
 

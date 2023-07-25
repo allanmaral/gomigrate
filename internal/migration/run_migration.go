@@ -1,34 +1,36 @@
 package migration
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/allanmaral/gomigrate/internal/config"
+	"github.com/allanmaral/gomigrate/internal/database"
 	_ "github.com/go-sql-driver/mysql"
 )
 
-func RunMigrations(c *config.Config) error {
-	db, err := openDbConnection()
+type Migration struct {
+	Up   string
+	Down string
+}
+
+func RunMigrations(conf *config.Config) error {
+	driver, err := openDbConnection(conf)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer driver.Close()
 
-	if err := createMetaTable(db); err != nil {
-		return err
-	}
-
-	appliedMigrations, err := loadAppliedMigrations(db)
+	appliedMigrations, err := driver.AppliedMigrations()
 	if err != nil {
 		return err
 	}
 
-	localMigrations, err := loadMigrationScripts(c.MigrationsPath)
+	localMigrations, err := loadMigrationScripts(conf.MigrationsPath)
 	if err != nil {
 		return err
 	}
@@ -43,9 +45,16 @@ func RunMigrations(c *config.Config) error {
 	for _, migration := range missingMigrations {
 		fmt.Printf("== %s: migrating =======\n", migration)
 
-		// apply migration
+		mig, err := readMigrationFile(migration, conf)
+		if err != nil {
+			return err
+		}
 
-		markAsApplied(migration, db)
+		if err := driver.Run(mig.Up); err != nil {
+			return err
+		}
+
+		driver.MarkAsApplied(migration)
 
 		fmt.Printf("== %s: migrated (?s)\n", migration)
 	}
@@ -53,46 +62,13 @@ func RunMigrations(c *config.Config) error {
 	return nil
 }
 
-func openDbConnection() (*sql.DB, error) {
-	db, err := sql.Open("mysql", "root:my-secret-pw@tcp(127.0.0.1:3306)/database")
-	if err != nil {
-		return nil, errors.New("failed to connect to the database")
-	}
-
-	return db, nil
-}
-
-func createMetaTable(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS gomigrate_meta 
-		(
-			name VARCHAR(255) NOT NULL
-				PRIMARY KEY,
-			CONSTRAINT name 
-				UNIQUE (name)
-		);
-	`)
-	if err != nil {
-		return errors.New("failed to create metadata table")
-	}
-
-	return nil
-}
-
-func loadAppliedMigrations(db *sql.DB) ([]string, error) {
-	rows, err := db.Query("SELECT name FROM gomigrate_meta;")
+func openDbConnection(conf *config.Config) (database.Driver, error) {
+	driver, err := database.Open(conf.Url)
 	if err != nil {
 		return nil, err
 	}
 
-	migrations := []string{}
-	for rows.Next() {
-		var migrationName string
-		rows.Scan(&migrationName)
-		migrations = append(migrations, migrationName)
-	}
-
-	return migrations, nil
+	return driver, nil
 }
 
 func loadMigrationScripts(path string) ([]string, error) {
@@ -134,23 +110,44 @@ func findMissingMigrations(applied []string, available []string) []string {
 	return missing
 }
 
-func markAsApplied(migration string, db *sql.DB) error {
-	_, err := db.Exec("INSERT INTO gomigrate_meta (name) VALUES (?)", migration)
+func readMigrationFile(migration string, conf *config.Config) (*Migration, error) {
+	dat, err := os.ReadFile(filepath.Join(conf.MigrationsPath, migration))
 	if err != nil {
-		return errors.New("failed to mark migration as applied")
+		return nil, err
 	}
 
-	return nil
+	fileStr := string(dat)
+	sections := strings.Split(fileStr, "BEGIN -- UP")
+	if len(sections) < 2 {
+		return nil, fmt.Errorf("could not find start of UP section in file %s", migration)
+	}
+
+	fileStr = sections[1]
+	sections = strings.Split(fileStr, "END -- UP")
+	if len(sections) < 2 {
+		return nil, fmt.Errorf("could not find end of UP section in file %s", migration)
+	}
+
+	up := sections[0]
+
+	fileStr = sections[1]
+	sections = strings.Split(fileStr, "BEGIN -- DOWN")
+	if len(sections) < 2 {
+		return nil, fmt.Errorf("could not find start of DOWN section in file %s", migration)
+	}
+
+	fileStr = sections[1]
+	sections = strings.Split(fileStr, "END -- DOWN")
+	if len(sections) < 2 {
+		return nil, fmt.Errorf("could not find end of DOWN section in file %s", migration)
+	}
+
+	down := sections[0]
+
+	mig := &Migration{
+		Up:   up,
+		Down: down,
+	}
+
+	return mig, nil
 }
-
-// CREATE TABLE IF NOT EXISTS gomigrate_meta
-// (
-//     name VARCHAR(255) NOT NULL
-//         PRIMARY KEY,
-//     CONSTRAINT name
-//         UNIQUE (name)
-// );
-
-// INSERT INTO gomigrate_meta (name) values (?);
-
-// SELECT name FROM gomigrate_meta;

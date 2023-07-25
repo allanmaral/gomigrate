@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,30 +9,26 @@ import (
 )
 
 type Config struct {
-	Username       string `yaml:"username"`
-	Password       string `yaml:"password"`
-	Database       string `yaml:"database"`
-	Host           string `yaml:"host"`
-	Dialect        string `yaml:"dialect"`
+	Url            string `yaml:"url"`
 	MigrationsPath string `yaml:"migrations-path"`
 }
 
-func Init(config *Config, force bool) error {
+func Init(conf *Config, force bool) error {
 	fileName := ".gomigrate"
 
 	if fileExists(fileName) && !force {
-		return errors.New("the file \".gomigrate\" already exists")
+		return fmt.Errorf("the file \".gomigrate\" already exists")
 	}
 
-	if err := saveConfig(fileName, config); err != nil {
+	if err := saveConfig(fileName, conf); err != nil {
 		return err
 	}
 
-	if err := createDirectory(config.MigrationsPath); err != nil {
+	if err := createDirectory(conf.MigrationsPath); err != nil {
 		return err
 	}
 
-	if err := createGitKeep(config.MigrationsPath); err != nil {
+	if err := createGitKeep(conf.MigrationsPath); err != nil {
 		return err
 	}
 
@@ -50,8 +45,7 @@ func fileExists(filename string) bool {
 
 func createDirectory(path string) error {
 	if err := os.MkdirAll(path, os.ModePerm); err != nil {
-		message := fmt.Sprintf("failed to create directory \"%s\"", path)
-		return errors.New(message)
+		return fmt.Errorf("failed to create directory \"%s\"", path)
 	}
 
 	return nil
@@ -60,21 +54,20 @@ func createDirectory(path string) error {
 func createGitKeep(path string) error {
 	filename := filepath.Join(path, ".gitkeep")
 	if err := os.WriteFile(filename, []byte{}, 0644); err != nil {
-		return errors.New("failed to create gitignore")
+		return fmt.Errorf("failed to create gitignore")
 	}
 	return nil
 }
 
-// TODO: Move to infra layer
 func saveConfig(filename string, config *Config) error {
 	configYaml, err := yaml.Marshal(config)
 	if err != nil {
-		return errors.New("failed to parse config file")
+		return fmt.Errorf("failed to parse config file")
 	}
 
 	err = os.WriteFile(filename, configYaml, 0644)
 	if err != nil {
-		return errors.New("failed write config file")
+		return fmt.Errorf("failed write config file")
 	}
 
 	return nil
