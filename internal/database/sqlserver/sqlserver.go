@@ -15,17 +15,18 @@ func init() {
 }
 
 var DefaultMigrationsTable = "schema_migrations"
+var DefaultMigrationNameColumn = "name"
 
 var (
 	ErrNilConfig      = fmt.Errorf("no config")
 	ErrNoDatabaseName = fmt.Errorf("no database name")
 	ErrNoSchema       = fmt.Errorf("no schema")
-	ErrDatabaseDirty  = fmt.Errorf("database is dirty")
 )
 
 type Config struct {
 	MigrationsTable string
 	DatabaseName    string
+	NameColumn      string
 	SchemaName      string
 }
 
@@ -137,7 +138,8 @@ func (ss *SQLServer) Open(url string) (database.Driver, error) {
 
 	driver, err := WithInstance(db, &Config{
 		DatabaseName:    purl.Path,
-		MigrationsTable: "schema_migrations",
+		MigrationsTable: DefaultMigrationsTable,
+		NameColumn:      DefaultMigrationNameColumn,
 	})
 
 	if err != nil {
@@ -172,7 +174,9 @@ func (ss *SQLServer) Run(migration string) error {
 }
 
 func (ss *SQLServer) AppliedMigrations() ([]string, error) {
-	rows, err := ss.conn.QueryContext(context.Background(), `SELECT name FROM "`+ss.config.MigrationsTable+`";`)
+	rows, err := ss.conn.QueryContext(
+		context.Background(),
+		`SELECT `+ss.config.NameColumn+` FROM "`+ss.config.MigrationsTable+`" ORDER BY "`+ss.config.NameColumn+`";`)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +194,19 @@ func (ss *SQLServer) AppliedMigrations() ([]string, error) {
 func (ss *SQLServer) MarkAsApplied(migration string) error {
 	_, err := ss.conn.ExecContext(
 		context.Background(),
-		`INSERT INTO "`+ss.config.MigrationsTable+`" (name) VALUES (@p1);`,
+		`INSERT INTO "`+ss.config.MigrationsTable+`" (`+ss.config.NameColumn+`) VALUES (@p1);`,
+		migration)
+	if err != nil {
+		return fmt.Errorf("failed to mark migration as applied")
+	}
+
+	return nil
+}
+
+func (ss *SQLServer) RemoveApplied(migration string) error {
+	_, err := ss.conn.ExecContext(
+		context.Background(),
+		`DELETE FROM "`+ss.config.MigrationsTable+`" WHERE `+ss.config.NameColumn+` = @p1;`,
 		migration)
 	if err != nil {
 		return fmt.Errorf("failed to mark migration as applied")
@@ -206,7 +222,7 @@ func (ss *SQLServer) ensureMigrationsTable() error {
 			JOIN sys.schemas s ON (t.schema_id = s.schema_id) 
 		WHERE s.name = 'dbo' AND t.name = '` + ss.config.MigrationsTable + `') 	
 	CREATE TABLE ` + ss.config.MigrationsTable + ` (
-		name VARCHAR(255) NOT NULL
+		` + ss.config.NameColumn + ` VARCHAR(255) NOT NULL
 			PRIMARY KEY,
 		CONSTRAINT name 
 			UNIQUE (name)

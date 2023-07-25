@@ -21,6 +21,8 @@ type Driver interface {
 	AppliedMigrations() ([]string, error)
 
 	MarkAsApplied(migration string) error
+
+	RemoveApplied(migration string) error
 }
 
 func Url(conf *ConnectionParams) (*url.URL, error) {
