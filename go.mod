@@ -3,7 +3,6 @@ module github.com/allanmaral/gomigrate
 go 1.20
 
 require (
-	github.com/go-sql-driver/mysql v1.7.1
 	github.com/gosimple/slug v1.13.1
 	github.com/microsoft/go-mssqldb v1.4.0
 	github.com/spf13/cobra v1.7.0

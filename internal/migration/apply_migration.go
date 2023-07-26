@@ -1,5 +1,8 @@
 package migration
 
-func ApplyMigration() error {
+import "database/sql"
+
+func ApplyMigration(db *sql.DB) error {
+
 	return nil
 }

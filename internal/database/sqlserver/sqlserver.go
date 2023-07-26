@@ -15,19 +15,20 @@ func init() {
 }
 
 var DefaultMigrationsTable = "schema_migrations"
-var DefaultMigrationNameColumn = "name"
+var DefaultMigrationsNameColumn = "name"
 
 var (
-	ErrNilConfig      = fmt.Errorf("no config")
-	ErrNoDatabaseName = fmt.Errorf("no database name")
-	ErrNoSchema       = fmt.Errorf("no schema")
+	ErrNilConfig            = fmt.Errorf("no config")
+	ErrNoDatabaseName       = fmt.Errorf("no database name")
+	ErrNoSchema             = fmt.Errorf("no schema")
+	ErrCreateMigrationTable = fmt.Errorf("failed to create migration table")
 )
 
 type Config struct {
-	MigrationsTable string
-	DatabaseName    string
-	NameColumn      string
-	SchemaName      string
+	MigrationsTable      string
+	MigrationsNameColumn string
+	DatabaseName         string
+	SchemaName           string
 }
 
 type SQLServer struct {
@@ -78,6 +79,10 @@ func WithInstance(instance *sql.DB, config *Config) (database.Driver, error) {
 		config.MigrationsTable = DefaultMigrationsTable
 	}
 
+	if len(config.MigrationsNameColumn) == 0 {
+		config.MigrationsNameColumn = DefaultMigrationsNameColumn
+	}
+
 	conn, err := instance.Conn(context.Background())
 
 	if err != nil {
@@ -103,6 +108,8 @@ func (ss *SQLServer) Url(conf *database.ConnectionParams) *nurl.URL {
 	hostname := conf.Hostname
 	port := conf.Port
 	database := conf.Database
+	tableName := conf.MigrationsTable
+	nameColumn := conf.MigrationsNameColumn
 
 	if user == "" {
 		user = "sa"
@@ -116,6 +123,8 @@ func (ss *SQLServer) Url(conf *database.ConnectionParams) *nurl.URL {
 
 	query := nurl.Values{}
 	query.Add("database", database)
+	query.Add("x-migrations-table", tableName)
+	query.Add("x-name-column", nameColumn)
 
 	return &nurl.URL{
 		Scheme:   "sqlserver",
@@ -131,15 +140,20 @@ func (ss *SQLServer) Open(url string) (database.Driver, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlserver", url)
+	migrationsTable := purl.Query().Get("x-migrations-table")
+	nameColumn := purl.Query().Get("x-name-column")
+
+	filteredUrl := database.RemoveCustomQuery(purl)
+
+	db, err := sql.Open("sqlserver", filteredUrl.String())
 	if err != nil {
 		return nil, err
 	}
 
 	driver, err := WithInstance(db, &Config{
-		DatabaseName:    purl.Path,
-		MigrationsTable: DefaultMigrationsTable,
-		NameColumn:      DefaultMigrationNameColumn,
+		DatabaseName:         purl.Path,
+		MigrationsTable:      migrationsTable,
+		MigrationsNameColumn: nameColumn,
 	})
 
 	if err != nil {
@@ -176,7 +190,7 @@ func (ss *SQLServer) Run(migration string) error {
 func (ss *SQLServer) AppliedMigrations() ([]string, error) {
 	rows, err := ss.conn.QueryContext(
 		context.Background(),
-		`SELECT `+ss.config.NameColumn+` FROM "`+ss.config.MigrationsTable+`" ORDER BY "`+ss.config.NameColumn+`";`)
+		`SELECT `+ss.config.MigrationsNameColumn+` FROM "`+ss.config.MigrationsTable+`" ORDER BY "`+ss.config.MigrationsNameColumn+`";`)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +208,7 @@ func (ss *SQLServer) AppliedMigrations() ([]string, error) {
 func (ss *SQLServer) MarkAsApplied(migration string) error {
 	_, err := ss.conn.ExecContext(
 		context.Background(),
-		`INSERT INTO "`+ss.config.MigrationsTable+`" (`+ss.config.NameColumn+`) VALUES (@p1);`,
+		`INSERT INTO "`+ss.config.MigrationsTable+`" (`+ss.config.MigrationsNameColumn+`) VALUES (@p1);`,
 		migration)
 	if err != nil {
 		return fmt.Errorf("failed to mark migration as applied")
@@ -206,7 +220,7 @@ func (ss *SQLServer) MarkAsApplied(migration string) error {
 func (ss *SQLServer) RemoveApplied(migration string) error {
 	_, err := ss.conn.ExecContext(
 		context.Background(),
-		`DELETE FROM "`+ss.config.MigrationsTable+`" WHERE `+ss.config.NameColumn+` = @p1;`,
+		`DELETE FROM "`+ss.config.MigrationsTable+`" WHERE `+ss.config.MigrationsNameColumn+` = @p1;`,
 		migration)
 	if err != nil {
 		return fmt.Errorf("failed to mark migration as applied")
@@ -217,18 +231,19 @@ func (ss *SQLServer) RemoveApplied(migration string) error {
 
 func (ss *SQLServer) ensureMigrationsTable() error {
 	query := `IF NOT EXISTS
-	(SELECT * 
-		FROM sys.tables t 
-			JOIN sys.schemas s ON (t.schema_id = s.schema_id) 
-		WHERE s.name = 'dbo' AND t.name = '` + ss.config.MigrationsTable + `') 	
-	CREATE TABLE ` + ss.config.MigrationsTable + ` (
-		` + ss.config.NameColumn + ` VARCHAR(255) NOT NULL
-			PRIMARY KEY,
-		CONSTRAINT name 
-			UNIQUE (name)
-	);`
+		 (SELECT *
+			FROM sys.tables t
+								JOIN sys.schemas s ON (t.schema_id = s.schema_id)
+			WHERE s.name = 'dbo'
+				AND t.name = '` + ss.config.MigrationsTable + `')
+		CREATE TABLE ` + ss.config.MigrationsTable + `
+		(
+				` + ss.config.MigrationsNameColumn + ` VARCHAR(255) NOT NULL PRIMARY KEY,
+				CONSTRAINT UN__` + ss.config.MigrationsTable + `__` + ss.config.MigrationsNameColumn + ` UNIQUE (` + ss.config.MigrationsNameColumn + `)
+		);`
 
 	if _, err := ss.conn.ExecContext(context.Background(), query); err != nil {
+		// return ErrCreateMigrationTable
 		return &database.Error{OrigErr: err, Query: []byte(query)}
 	}
 

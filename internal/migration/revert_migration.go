@@ -2,11 +2,13 @@ package migration
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/allanmaral/gomigrate/internal/config"
+	"github.com/allanmaral/gomigrate/internal/database"
 )
 
-func RevertMigration(conf *config.Config) error {
+func RevertMigration(undoAll bool, conf *config.Config) error {
 	driver, err := openDbConnection(conf)
 	if err != nil {
 		return err
@@ -23,11 +25,29 @@ func RevertMigration(conf *config.Config) error {
 		return nil
 	}
 
-	lastMigration := appliedMigrations[len(appliedMigrations)-1]
+	migrationsCount := len(appliedMigrations)
+	for k := range appliedMigrations {
+		i := migrationsCount - 1 - k
+		migration := appliedMigrations[i]
 
-	fmt.Printf("== %s: reverting =======\n", lastMigration)
+		err := revertMigration(driver, migration, conf)
+		if err != nil {
+			return err
+		}
 
-	mig, err := readMigrationFile(lastMigration, conf)
+		if !undoAll {
+			break
+		}
+	}
+
+	return nil
+}
+
+func revertMigration(driver database.Driver, migration string, conf *config.Config) error {
+	start := time.Now()
+	fmt.Printf("== %s: reverting =======\n", migration)
+
+	mig, err := readMigrationFile(migration, conf)
 	if err != nil {
 		return err
 	}
@@ -36,9 +56,10 @@ func RevertMigration(conf *config.Config) error {
 		return err
 	}
 
-	driver.RemoveApplied(lastMigration)
+	driver.RemoveApplied(migration)
 
-	fmt.Printf("== %s: reverted (?s)\n", lastMigration)
+	elapsed := time.Since(start)
+	fmt.Printf("== %s: reverted (%s)\n", migration, elapsed)
 
 	return nil
 }

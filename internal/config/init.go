@@ -10,7 +10,7 @@ import (
 
 type Config struct {
 	Url            string `yaml:"url"`
-	MigrationsPath string `yaml:"migrations-path"`
+	MigrationsPath string `yaml:"migrations_path"`
 }
 
 func Init(conf *Config, force bool) error {

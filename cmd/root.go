@@ -30,7 +30,7 @@ func Execute() {
 
 func GetConfig() *config.Config {
 	configDir := filepath.Dir(viper.ConfigFileUsed())
-	migrationsPath := path.Join(configDir, viper.GetString("migrations-path"))
+	migrationsPath := path.Join(configDir, viper.GetString("migrations_path"))
 
 	config := &config.Config{
 		Url:            viper.GetString("url"),
@@ -64,6 +64,16 @@ func initConfig() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
+		wd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+		path, err := filepath.Rel(wd, viper.ConfigFileUsed())
+
+		if err != nil {
+			fmt.Printf("Loaded configuration file \"%s\"\n", viper.ConfigFileUsed())
+		} else {
+			fmt.Printf("Loaded configuration file \"%s\"\n", path)
+		}
 	}
 }

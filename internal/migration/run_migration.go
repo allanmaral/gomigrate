@@ -3,8 +3,10 @@ package migration
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/allanmaral/gomigrate/internal/config"
+	"github.com/allanmaral/gomigrate/internal/database"
 )
 
 func RunMigrations(conf *config.Config) error {
@@ -32,21 +34,33 @@ func RunMigrations(conf *config.Config) error {
 	}
 
 	for _, migration := range missingMigrations {
-		fmt.Printf("== %s: migrating =======\n", migration)
-
-		mig, err := readMigrationFile(migration, conf)
-		if err != nil {
+		if err := runMigration(driver, migration, conf); err != nil {
 			return err
 		}
-
-		if err := driver.Run(mig.Up); err != nil {
-			return err
-		}
-
-		driver.MarkAsApplied(migration)
-
-		fmt.Printf("== %s: migrated (?s)\n", migration)
 	}
+
+	return nil
+}
+
+func runMigration(driver database.Driver, migration string, conf *config.Config) error {
+	start := time.Now()
+	fmt.Printf("== %s: migrating =======\n", migration)
+
+	mig, err := readMigrationFile(migration, conf)
+	if err != nil {
+		return err
+	}
+
+	if err := driver.Run(mig.Up); err != nil {
+		return err
+	}
+
+	if err := driver.MarkAsApplied(migration); err != nil {
+		return err
+	}
+
+	elapsed := time.Since(start)
+	fmt.Printf("== %s: migrated (%s)\n", migration, elapsed)
 
 	return nil
 }

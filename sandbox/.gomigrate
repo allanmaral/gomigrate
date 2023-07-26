@@ -1,2 +1,2 @@
-url: sqlserver://sa:my-secret-pw%40123@localhost:1433?database=master
-migrations-path: migrations
+url: sqlserver://sa:my-secret-pw%40123@localhost:1433?database=master&x-migrations-table=AACMIG&x-name-column=AACMINAM
+migrations_path: migrations

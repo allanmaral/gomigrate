@@ -9,14 +9,16 @@ import (
 )
 
 var (
-	username       string
-	password       string
-	databaseName   string
-	hostname       string
-	port           int32
-	provider       string
-	migrationsPath string
-	force          bool
+	username        string
+	password        string
+	databaseName    string
+	hostname        string
+	port            int32
+	provider        string
+	migrationsPath  string
+	migrationsTable string
+	nameColumn      string
+	force           bool
 
 	initCmd = &cobra.Command{
 		Use:   "init",
@@ -24,12 +26,14 @@ var (
 		Long:  "Initializes project",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			params := &database.ConnectionParams{
-				User:     username,
-				Password: password,
-				Database: databaseName,
-				Hostname: hostname,
-				Port:     port,
-				Provider: provider,
+				User:                 username,
+				Password:             password,
+				Database:             databaseName,
+				Hostname:             hostname,
+				Port:                 port,
+				Provider:             provider,
+				MigrationsTable:      migrationsTable,
+				MigrationsNameColumn: nameColumn,
 			}
 
 			url, err := database.Url(params)
@@ -61,5 +65,7 @@ func init() {
 	initCmd.Flags().Int32Var(&port, "port", 0, "Database connection port")
 	initCmd.Flags().StringVar(&provider, "provider", "sqlserver", "Database provider")
 	initCmd.Flags().StringVar(&migrationsPath, "migrations-path", "migrations", "Path to the migrations folder")
+	initCmd.Flags().StringVar(&migrationsTable, "migrations-table", "schema_migrations", "Migrations table name")
+	initCmd.Flags().StringVar(&nameColumn, "name-column", "name", "Migrations table name column")
 	initCmd.Flags().BoolVarP(&force, "force", "f", false, "Will drop the existing config file and re-create it")
 }
