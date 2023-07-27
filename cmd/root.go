@@ -16,7 +16,7 @@ import (
 var (
 	cfgFile string
 	rootCmd = &cobra.Command{
-		Use:   "gomigrate",
+		Use:   "gomigrate [command]",
 		Short: "A CLI for managing database migrations",
 	}
 )
