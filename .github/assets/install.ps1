@@ -10,7 +10,7 @@
     https://github.com/allanmaral/gomigrate
 #>
 param(
-    [String] $GomigrateDir,
+    [String] $GomigrateDir
 )
 
 # Disable StrictMode in this script
@@ -193,7 +193,7 @@ function Install-Gomigrate {
 
     Write-InstallInfo "Downloading $downloadUrl to $gomigrateZipfile"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest $download -Out $gomigrateZipfile
+    Invoke-WebRequest -Uri "$downloadUrl" -Out "$gomigrateZipfile"
 
     Write-InstallInfo "Extracting..."
     $gomigrateUnzipTempDir = "$GOMIGRATE_DIR\_tmp"
@@ -205,7 +205,7 @@ function Install-Gomigrate {
     Remove-Item $gomigrateZipfile
 
     # Finially ensure gomigrate is in the PATH
-    # Add-Path $GOMIGRATE_DIR
+    Add-Path $GOMIGRATE_DIR
 
     Write-InstallInfo "gomigrate was installed successfully!" -ForegroundColor DarkGreen
     Write-InstallInfo "Type 'gomigrate --help' for instructions."
